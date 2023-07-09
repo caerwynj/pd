@@ -1,0 +1,286 @@
+
+0 0 rng tick+ desc tot
+
+0 0 rng {3 copy desc tot } tick+
+
+
+A tea relation pops for elements from the stack.
+The top is the code that will be executed for each result
+returned from the join. 
+
+A single 1 to 1 join simply pushes the result on the stack.
+
+A multi join loops through the results executing the code.
+
+If we expand the join with multiple results it would look
+like a while or for loop.
+
+init  step  end {code} for
+
+time element attribute step all {code} for
+
+We would need to provide an exit, or break, function
+to get out of the loop.
+
+Should we have a dictionary stack?	Yes.
+
+We need to define arrays.
+But we can do that for now with just a mark
+on the stack and operators that work tomark.
+
+
+1	xeff		20
+2	xpre
+3	xpost
+4	xtog		18
+5	xall		17
+
+6	peff		36
+7	ppre
+8	ppost
+9	ptog		34
+10	pall		33
+
+11	reff		12
+12	rpre
+13	rpost
+14	rtog		10
+15	rall		9
+
+(t1) dict 
+now (/in/ce) () xeff {print3} forall
+
+Should the result set be push on the stack,
+the real dictionary stack.
+
+/name {add} def
+name
+
+The result set is also a dictionary held in memory.
+It can be pushed on the dictionary stack and
+have operations performed on it implicitly (procedure calls)
+or explicity using get. One can not write to a result set.
+One must write to a Btree dictionary.
+Result sets are readonly.
+
+The dictionary stack is a current dynamic name space.
+
+Therefore, we need a join function to work on a Block
+and a Btree.
+We can then replace the slookup for symbols with a Btree lookup
+using the default system dictionary which we init in memory at
+startup.
+
+Operand stack
+Dictionary stack
+Execution stack
+
+
+
+The return of a join is a new Btree (with associated file descriptor
+for cache). We can then free blocks from the original tree.
+Result sets are temporary. We can free blocks in memory as needed.
+But when program ends the whole btree is lost.
+
+Dictionary operators
+	(file) dict 	dict		open dictionary and leave on operand stack
+	dict begin	-		push dictionary on dictionary stack
+	  -   end	-		pop dictionary from dictionary stack
+time key value def	-		add triad to current dictionary stack
+		
+		key			lookup key and push on exec stack
+time key value join	dict
+
+Dict stack is a linked list of Btrees.
+
+We need a lookup function to put inside the lexer.
+	while (notfound and top)
+		Btree = dict[top--]
+		val = blookup(Btree, key)
+		if(val)
+			break
+	}
+	if(!val)
+		slookup(key);
+	else {
+		we found a btree val so convert to Blk
+		and push on exec stack.
+		str2blk(val, b)
+		pushio(b)
+		return yylex();
+	}
+
+So what happens when we attempt to 'def' a complex type
+like an array, or dict.
+/k [a b c d] def
+/mydict (file) dict def
+
+We could allow it, allow a string representation of every object,
+but it wouldn't mean anything on subsequent invocations of the procedure.
+It only means something to the currently executing process.
+
+For example the operand on the stack after (file) dict is a pointer to
+an open Btree, but the string representation might be ((file) dict)
+Or the internal file descriptor for that file.
+It could be a key that pd could then use to look up the pointer reference
+in memory.
+
+We would still need to distinguish between persistent store and
+temporary storage.
+
+We should allow only strings and code and numbers to be
+assigned using 'def'.  No complex structures.
+
+Since a dict is always a global persistent object we only need to refer
+to it by its literal name.
+
+And instead of arrays we could have lists of strings which
+is simply space separated list. arraytomark concatenates
+the stack of strings using a list separator. This can
+be passed around as a single object. Numbers
+are also represented as strings.
+
+Literal names are not preceded by '/' but just named.
+
+So when we creat a dict define a name and the file
+	name (file) dict 	dict
+
+
+The code for def is then
+	pop top from stack and convert datum to string
+	pop literal name from stack
+	save name and string into top btree on dict stack
+
+Converting datum to string depends on datum type
+	switch(type)
+	case string	return string
+	case num	return string
+	case array	concat elements into string
+	case dict	return btree literal name
+		what if dict is a query. We need to store the query. 
+We have all this information at the time we do the query we can
+store it as pd code as part of the btree structure, including,
+transaction time, effective time, key, value and flags.
+
+Local defines are done using the = operator (or 'local')
+a (string) =
+This stores in local memory and does not use a Btree.
+
+[ But locals are not necessary because we have the stack.]
+
+When a 'def' a result set we store the query used to create
+the result set in postfix format
+
+If a further query is applied, the query is appended
+to the first query.
+
+dict time key val flag join time el at flag join ...
+
+dict time key val flag join	dict
+
+join pushes a dict onto the operand stack.
+
+We can always completely reproduce the results of a query
+by storing the original query parameters and the
+effective transaction time.
+
+So when a dict is def to a name the transaction time
+is recorded with it.
+
+All arithmetic should be done with arbitrary precision
+that is, using dc code. But we won't worry about this
+for now. We'll just get the btree dictionary working first.
+
+The Datum types are,
+	DNUM		Number
+	DSTR		String
+	DCODE		Code
+	DDICT		Dict
+	DSYM		Symbol (literal name)
+	DLIST		List
+	DMARK		Mark
+
+dat2str()	convert stack type to string
+	num is converted to string
+	string keeps parens
+	code has braces stripped
+	dict converts to code representing query
+	sym is the name of the symbol.
+	list is concatenated using item separator (see rc).
+join()		must return a btree for any Btree result
+blk2btree()	converts the block returned by join to a Btree
+	using a temp file for storage.
+def()		add key-value to dict on top of stack
+	dicts will need a read/write flag
+dlookup()	search through dict stack for symbol
+
+Derived dicts should be buffered in temporary files.
+But they can not be inserted into. Inserts only
+occur in the original dicts. An original dict
+can be created from a derived dict.
+So we need to rewrite the buffering scheme. When
+should results be written to the file? How
+many blocks can we hold in memory?
+
+There is a userdict which holds data for the current
+session only and is not persistent. But this is also
+a Btree.
+We begin with an in memory btree on the top of the
+stack.
+
+The systemdict is the internal symbols dictionary, which
+is not implemented as a btree. It is readonly. It
+is always at the bottom of the stack. (in fact, not
+on the stack at all, but looked at only after we
+found nothing on the btree stack.)
+
+So we have 'named' dictionaries, and 'un-named'
+dictionaries which are result sets. 
+
+	Myval 1 def
+This code creates a new symbol 'Myval' and pushes it on the
+stack. pushes the number 1 on the stack; then
+associates the symbol and the 1 in the dict on
+the top of the dict stack. A later reference
+to 'Myval' will lookup the Symbol in the top dict
+stack, find the string '1' associated with the
+key 'Myval', and push that string on the execution
+stack, which will see the '1' and push the number
+1 on the operand stack.
+
+But don't we need a time with every def?
+
+now Myval 1 def
+Myval
+
+Yes we do. So now the storage and lookup also
+uses the effective valid time. We would
+need an effective valid time operator that
+globally modified the evt (and the effective
+transaction time if needed.)
+
+
+TODO next
+1. At initialization create the btree stack
+and push the new userdict on the stack.
+
+2. change the lexer to search through the dict
+stack for symbols.
+
+3. creat the def function to insert into a dict.
+
+4. write the dat2str function.
+
+
+We'll deal with lists, mark, and other
+dictionary operators later.
+
+
+2003/0919
+We do need the literal name syntax,
+because otherwise we will not be able
+to redefine a name. A liternal name
+is preceded by a '/'.
+
+The lexer will have to recognize the 
+initial slash.
